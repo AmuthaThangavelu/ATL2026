@@ -1,0 +1,6 @@
+{
+  "name": "WonderPlay - Kids Fun Games",
+  "description": "A colorful, vibrant, and interactive kids game featuring Balloon Pop, Animal Piano & Xylophone, Shape Sorter, Finger Sparkle Paint, and Feed the Animals with delightful sound effects and intuitive touch controls.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
