@@ -10,18 +10,32 @@ class GamePreferences private constructor(context: Context) {
 
     private val prefs = context.getSharedPreferences("wonderplay_kids_data", Context.MODE_PRIVATE)
 
-    private val _totalStars = MutableStateFlow(prefs.getInt("total_stars", 15)) // Start with 15 welcoming bonus stars
+    // Start strictly from 0 stars
+    private val _totalStars = MutableStateFlow(
+        run {
+            val stored = prefs.getInt("total_stars", 0)
+            if (stored == 15 && !prefs.getBoolean("stars_user_earned", false)) {
+                prefs.edit().putInt("total_stars", 0).apply()
+                0
+            } else {
+                stored
+            }
+        }
+    )
     val totalStars: StateFlow<Int> = _totalStars.asStateFlow()
 
     private val _unlockedStickers = MutableStateFlow(
-        prefs.getStringSet("unlocked_stickers", setOf("star_1", "star_2")) ?: setOf("star_1", "star_2")
+        prefs.getStringSet("unlocked_stickers", setOf("star_1")) ?: setOf("star_1")
     )
     val unlockedStickers: StateFlow<Set<String>> = _unlockedStickers.asStateFlow()
 
     fun addStars(amount: Int) {
         val newTotal = _totalStars.value + amount
         _totalStars.value = newTotal
-        prefs.edit().putInt("total_stars", newTotal).apply()
+        prefs.edit()
+            .putInt("total_stars", newTotal)
+            .putBoolean("stars_user_earned", true)
+            .apply()
         checkStickerUnlocks(newTotal)
     }
 

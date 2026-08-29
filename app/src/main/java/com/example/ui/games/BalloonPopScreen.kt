@@ -14,6 +14,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -57,6 +59,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
@@ -190,7 +193,13 @@ fun BalloonPopScreen(
     }
 
     fun popBalloon(balloon: BalloonItem) {
-        if (balloon.isPopped) return
+        val index = balloons.indexOfFirst { it.id == balloon.id }
+        if (index == -1) return
+        val current = balloons[index]
+        if (current.isPopped) return
+
+        // Mark popped and remove safely
+        balloons.removeAt(index)
 
         // Audio feedback
         soundEngine.playPop()
@@ -205,7 +214,7 @@ fun BalloonPopScreen(
             val speed = Random.nextFloat() * 0.02f + 0.01f
             particles.add(
                 PoppedParticle(
-                    id = System.currentTimeMillis() + i,
+                    id = System.currentTimeMillis() + i + Random.nextLong(1000),
                     x = balloon.xFraction,
                     y = balloon.yFraction,
                     color = balloon.color,
@@ -232,12 +241,6 @@ fun BalloonPopScreen(
                 onAddStars(10)
                 resetMission()
             }
-        }
-
-        // Mark popped
-        val index = balloons.indexOfFirst { it.id == balloon.id }
-        if (index != -1) {
-            balloons.removeAt(index)
         }
     }
 
@@ -352,51 +355,96 @@ fun BalloonPopScreen(
             ) {
                 val canvasWidth = maxWidth
                 val canvasHeight = maxHeight
+                val density = LocalDensity.current
 
-                // Render Balloons
-                balloons.forEach { balloon ->
-                    val sway = (sin(balloon.yFraction * 10f) * 16).dp
-                    val xOffset = canvasWidth * balloon.xFraction + sway
-                    val yOffset = canvasHeight * balloon.yFraction
+                fun checkPopAt(touchX: Float, touchY: Float) {
+                    val canvasWPx = with(density) { canvasWidth.toPx() }
+                    val canvasHPx = with(density) { canvasHeight.toPx() }
+                    val snapshot = balloons.toList()
+                    for (i in snapshot.indices.reversed()) {
+                        val b = snapshot[i]
+                        if (b.isPopped) continue
+                        val bSizePx = with(density) { b.sizeDp.dp.toPx() }
+                        val swayOffset = (kotlin.math.sin(b.yFraction * 10.0) * 16.0).toFloat()
+                        val swayPx = with(density) { swayOffset.dp.toPx() }
+                        val balloonCenterX = (canvasWPx * b.xFraction) + swayPx + (bSizePx / 2f)
+                        val balloonCenterY = (canvasHPx * b.yFraction) + (bSizePx / 2f)
+                        val hitRadius = (bSizePx / 2f) * 1.35f // Kid-friendly generous touch radius
 
-                    SingleBalloonView(
-                        balloon = balloon,
-                        modifier = Modifier
-                            .offset {
-                                IntOffset(
-                                    xOffset.roundToPx(),
-                                    yOffset.roundToPx()
-                                )
-                            }
-                            .size(balloon.sizeDp.dp),
-                        onPop = { popBalloon(balloon) }
-                    )
+                        val dx = touchX - balloonCenterX
+                        val dy = touchY - balloonCenterY
+                        if ((dx * dx + dy * dy) <= (hitRadius * hitRadius)) {
+                            popBalloon(b)
+                            break
+                        }
+                    }
                 }
 
-                // Render Explosion Particles
-                particles.forEach { p ->
-                    val px = canvasWidth * p.x
-                    val py = canvasHeight * p.y
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .pointerInput(Unit) {
+                            awaitEachGesture {
+                                val down = awaitFirstDown(requireUnconsumed = false)
+                                checkPopAt(down.position.x, down.position.y)
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val anyPressed = event.changes.any { it.pressed }
+                                    if (!anyPressed) break
+                                    event.changes.forEach { change ->
+                                        if (change.pressed) {
+                                            checkPopAt(change.position.x, change.position.y)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                ) {
+                    // Render Balloons
+                    balloons.forEach { balloon ->
+                        val sway = (sin(balloon.yFraction * 10f) * 16f).dp
+                        val xOffset = canvasWidth * balloon.xFraction + sway
+                        val yOffset = canvasHeight * balloon.yFraction
 
-                    if (p.text != null) {
-                        Text(
-                            text = p.text,
-                            fontWeight = FontWeight.Black,
-                            fontSize = 22.sp,
-                            color = VibrantAmber,
+                        SingleBalloonView(
+                            balloon = balloon,
                             modifier = Modifier
-                                .offset { IntOffset(px.roundToPx(), py.roundToPx()) }
-                                .graphicsLayer { alpha = p.alpha }
+                                .offset {
+                                    IntOffset(
+                                        xOffset.roundToPx(),
+                                        yOffset.roundToPx()
+                                    )
+                                }
+                                .size(balloon.sizeDp.dp),
+                            onPop = { popBalloon(balloon) }
                         )
-                    } else {
-                        Box(
-                            modifier = Modifier
-                                .offset { IntOffset(px.roundToPx(), py.roundToPx()) }
-                                .size(p.size.dp)
-                                .graphicsLayer { alpha = p.alpha }
-                                .clip(CircleShape)
-                                .background(p.color)
-                        )
+                    }
+
+                    // Render Explosion Particles
+                    particles.forEach { p ->
+                        val px = canvasWidth * p.x
+                        val py = canvasHeight * p.y
+
+                        if (p.text != null) {
+                            Text(
+                                text = p.text,
+                                fontWeight = FontWeight.Black,
+                                fontSize = 22.sp,
+                                color = VibrantAmber,
+                                modifier = Modifier
+                                    .offset { IntOffset(px.roundToPx(), py.roundToPx()) }
+                                    .graphicsLayer { alpha = p.alpha }
+                            )
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .offset { IntOffset(px.roundToPx(), py.roundToPx()) }
+                                    .size(p.size.dp)
+                                    .graphicsLayer { alpha = p.alpha }
+                                    .clip(CircleShape)
+                                    .background(p.color)
+                            )
+                        }
                     }
                 }
             }
@@ -453,7 +501,7 @@ fun SingleBalloonView(
     Box(
         modifier = modifier
             .scale(scale)
-            .pointerInput(Unit) {
+            .pointerInput(balloon.id) {
                 detectTapGestures(
                     onPress = {
                         isPressed = true

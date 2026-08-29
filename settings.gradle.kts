@@ -22,6 +22,6 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "WonderPlay"
+rootProject.name = "BrainPopz"
 
 include(":app")

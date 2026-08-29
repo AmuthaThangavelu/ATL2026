@@ -127,7 +127,7 @@ fun HomeScreen(
 
         Column(modifier = Modifier.fillMaxSize()) {
             KidTopBar(
-                title = "WonderPlay",
+                title = "BrainPopz",
                 emoji = "🌈",
                 stars = stars,
                 soundEngine = soundEngine,
@@ -177,7 +177,7 @@ fun HomeScreen(
                 ) {
                     Column {
                         Text(
-                            text = "✨ WONDERPLAY LAND",
+                            text = "✨ BRAINPOPZ LAND",
                             fontWeight = FontWeight.Black,
                             fontSize = 11.sp,
                             letterSpacing = 1.2.sp,

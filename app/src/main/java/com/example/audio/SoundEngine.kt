@@ -32,14 +32,15 @@ class SoundEngine private constructor(private val context: Context) {
     private val _isSoundEnabled = MutableStateFlow(prefs.getBoolean("sound_enabled", true))
     val isSoundEnabled: StateFlow<Boolean> = _isSoundEnabled.asStateFlow()
 
-    private val _isMusicEnabled = MutableStateFlow(prefs.getBoolean("music_enabled", true))
+    // Music is OFF by default so no unwanted continuous tunes play without user action
+    private val _isMusicEnabled = MutableStateFlow(prefs.getBoolean("music_enabled", false))
     val isMusicEnabled: StateFlow<Boolean> = _isMusicEnabled.asStateFlow()
 
     private val sampleRate = 44100
     private val audioTrackCache = ConcurrentHashMap<String, ShortArray>()
 
     init {
-        // Precompute common kid-friendly sounds
+        // Precompute common kid-friendly sound effects
         prepareSounds()
         if (_isMusicEnabled.value) {
             startBackgroundMusic()

@@ -1,6 +1,5 @@
 package com.example.ui.games
 
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -9,15 +8,13 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -26,7 +23,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -34,10 +30,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -51,17 +44,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.audio.SoundEngine
@@ -85,7 +74,6 @@ import com.example.ui.theme.VibrantSky900
 import com.example.ui.theme.VibrantWhite
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlin.math.roundToInt
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -106,7 +94,7 @@ fun ShapeSorterScreen(
     val shapesToMatch = remember { mutableStateListOf<ShapeCard>() }
     var selectedShapeCard by remember { mutableStateOf<ShapeCard?>(null) }
     var showCelebration by remember { mutableStateOf(false) }
-    var feedbackMessage by remember { mutableStateOf("Match the smiling shapes into their baskets! ⭐") }
+    var feedbackMessage by remember { mutableStateOf("Tap any shape or basket to match! ⭐") }
 
     val coroutineScope = rememberCoroutineScope()
 
@@ -121,43 +109,68 @@ fun ShapeSorterScreen(
         }
         shapesToMatch.addAll(cards)
         selectedShapeCard = null
-        feedbackMessage = "Tap a shape, then tap its matching basket! 🎯"
+        feedbackMessage = "Tap any shape or basket to match! ⭐"
     }
 
     LaunchedEffect(currentRound) {
         startNewRound()
     }
 
-    fun handleMatchAttempt(card: ShapeCard, targetShape: KidShape) {
-        if (card.shape == targetShape) {
-            // Correct match!
-            soundEngine.playBoing()
-            soundEngine.playSparkle()
+    fun handleMatchSuccess(card: ShapeCard) {
+        soundEngine.playBoing()
+        soundEngine.playSparkle()
 
-            val index = shapesToMatch.indexOfFirst { it.id == card.id }
-            if (index != -1) {
-                shapesToMatch[index] = card.copy(isMatched = true)
+        val index = shapesToMatch.indexOfFirst { it.id == card.id }
+        if (index != -1) {
+            shapesToMatch[index] = card.copy(isMatched = true)
+        }
+        selectedShapeCard = null
+        onAddStars(2)
+        feedbackMessage = "Great Match! ${card.shape.emoji} ${card.shape.displayName} 🎉"
+
+        // Check if all matched
+        if (shapesToMatch.all { it.isMatched }) {
+            coroutineScope.launch {
+                soundEngine.playVictory()
+                showCelebration = true
+                onAddStars(6)
+                feedbackMessage = "🌟 Level Complete! +6 Stars! 🌟"
+                delay(2200)
+                currentRound++
             }
-            selectedShapeCard = null
-            onAddStars(2)
-            feedbackMessage = "Yay! Super Match! ${card.shape.emoji} ${card.shape.displayName} 🎉"
+        }
+    }
 
-            // Check if all matched
-            if (shapesToMatch.all { it.isMatched }) {
-                coroutineScope.launch {
-                    soundEngine.playVictory()
-                    showCelebration = true
-                    onAddStars(6)
-                    feedbackMessage = "🌟 Wonderful Job! Round Complete! 🌟"
-                    delay(2500)
-                    currentRound++
-                }
+    fun onShapeCardTapped(card: ShapeCard) {
+        if (card.isMatched) return
+        soundEngine.playBoing()
+        if (selectedShapeCard?.id == card.id) {
+            selectedShapeCard = null
+            feedbackMessage = "Tap a shape or basket! 🎯"
+        } else {
+            selectedShapeCard = card
+            feedbackMessage = "Now tap the matching ${card.shape.displayName} Jar! 🎯"
+        }
+    }
+
+    fun onBasketTapped(basketShape: KidShape) {
+        val selectedCard = selectedShapeCard
+        if (selectedCard != null) {
+            if (selectedCard.shape == basketShape) {
+                handleMatchSuccess(selectedCard)
+            } else {
+                soundEngine.playGiggle()
+                feedbackMessage = "Oops! Try the ${selectedCard.shape.displayName} Jar! 😊"
             }
         } else {
-            // Wrong shape
-            soundEngine.playGiggle()
-            feedbackMessage = "Oops! Try another basket! 😊"
-            selectedShapeCard = null
+            // Find if there is an unmatched shape card for this basket
+            val matchingCard = shapesToMatch.firstOrNull { !it.isMatched && it.shape == basketShape }
+            if (matchingCard != null) {
+                handleMatchSuccess(matchingCard)
+            } else {
+                soundEngine.playGiggle()
+                feedbackMessage = "That shape is already matched! Try another! ✨"
+            }
         }
     }
 
@@ -259,12 +272,7 @@ fun ShapeSorterScreen(
                         card = card,
                         isSelected = isSelected,
                         isMatched = isMatched,
-                        onClick = {
-                            if (!isMatched) {
-                                soundEngine.playBoing()
-                                selectedShapeCard = if (isSelected) null else card
-                            }
-                        }
+                        onClick = { onShapeCardTapped(card) }
                     )
                 }
             }
@@ -273,7 +281,7 @@ fun ShapeSorterScreen(
 
             // Lower Section: Shape Monster Baskets
             Text(
-                text = "2. DROP INTO MATCHING BASKET 👇",
+                text = "2. MATCHING JARS & BASKETS 👇",
                 fontWeight = FontWeight.Black,
                 fontSize = 11.sp,
                 letterSpacing = 1.2.sp,
@@ -292,15 +300,8 @@ fun ShapeSorterScreen(
                 activeShapesInRound.forEach { basketShape ->
                     ShapeBasketView(
                         shape = basketShape,
-                        hasSelectedCard = selectedShapeCard != null,
-                        onClick = {
-                            selectedShapeCard?.let { card ->
-                                handleMatchAttempt(card, basketShape)
-                            } ?: run {
-                                soundEngine.playGiggle()
-                                feedbackMessage = "Pick a shape from above first! 👆"
-                            }
-                        }
+                        hasSelectedCard = selectedShapeCard?.shape == basketShape,
+                        onClick = { onBasketTapped(basketShape) }
                     )
                 }
             }
@@ -359,23 +360,40 @@ fun ShapeCardItem(
     isMatched: Boolean,
     onClick: () -> Unit
 ) {
+    var isPressed by remember { mutableStateOf(false) }
+
     val scale by animateFloatAsState(
         targetValue = when {
-            isMatched -> 0.8f
-            isSelected -> 1.15f
+            isMatched -> 0.82f
+            isSelected -> 1.16f
+            isPressed -> 0.94f
             else -> 1f
         },
-        animationSpec = spring(dampingRatio = 0.5f, stiffness = 600f),
+        animationSpec = spring(dampingRatio = 0.45f, stiffness = 700f),
         label = "shape_card_scale"
     )
 
-    val shadowBevel = if (isSelected) 2.dp else 4.dp
+    val shadowBevel = if (isSelected || isPressed) 2.dp else 4.dp
 
     Box(
         modifier = Modifier
             .padding(4.dp)
             .scale(scale)
             .size(76.dp)
+            .pointerInput(card.isMatched) {
+                detectTapGestures(
+                    onPress = {
+                        if (!card.isMatched) {
+                            isPressed = true
+                            tryAwaitRelease()
+                            isPressed = false
+                        }
+                    },
+                    onTap = {
+                        onClick()
+                    }
+                )
+            }
             .clip(RoundedCornerShape(22.dp))
             .background(if (isSelected) VibrantAmberShadow else card.shape.color.copy(alpha = 0.6f))
             .padding(bottom = shadowBevel)
@@ -386,8 +404,7 @@ fun ShapeCardItem(
                 color = if (isSelected) VibrantAmber else (if (isMatched) Color(0xFFCBD5E1) else card.shape.color),
                 shape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp, bottomStart = 16.dp, bottomEnd = 16.dp)
             )
-            .clickable { onClick() }
-            .testTag("shape_card_${card.shape.name}"),
+            .testTag("shape_card_${card.shape.name.lowercase()}"),
         contentAlignment = Alignment.Center
     ) {
         if (isMatched) {
@@ -420,37 +437,60 @@ fun ShapeBasketView(
     hasSelectedCard: Boolean,
     onClick: () -> Unit
 ) {
+    var isPressed by remember { mutableStateOf(false) }
+
     val infiniteTransition = rememberInfiniteTransition(label = "basket_pulse")
     val pulseScale by infiniteTransition.animateFloat(
         initialValue = 1f,
-        targetValue = 1.08f,
+        targetValue = 1.1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(600, easing = FastOutSlowInEasing),
+            animation = tween(500, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
         label = "basket_pulse_scale"
     )
 
+    val currentScale = when {
+        isPressed -> 0.92f
+        hasSelectedCard -> pulseScale
+        else -> 1f
+    }
+
     Box(
         modifier = Modifier
             .padding(4.dp)
-            .scale(if (hasSelectedCard) pulseScale else 1f)
-            .size(width = 96.dp, height = 88.dp)
+            .scale(currentScale)
+            .size(width = 98.dp, height = 90.dp)
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onPress = {
+                        isPressed = true
+                        tryAwaitRelease()
+                        isPressed = false
+                    },
+                    onTap = {
+                        onClick()
+                    }
+                )
+            }
             .clip(RoundedCornerShape(24.dp))
-            .background(shape.color.copy(alpha = 0.65f))
-            .padding(bottom = 4.dp)
+            .background(if (hasSelectedCard) VibrantAmberShadow else shape.color.copy(alpha = 0.65f))
+            .padding(bottom = if (isPressed) 2.dp else 4.dp)
             .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp, bottomStart = 18.dp, bottomEnd = 18.dp))
             .background(
                 Brush.verticalGradient(
                     listOf(
                         VibrantWhite,
-                        shape.color.copy(alpha = 0.25f)
+                        if (hasSelectedCard) Color(0xFFFEF3C7) else shape.color.copy(alpha = 0.25f)
                     )
                 )
             )
-            .border(2.5.dp, shape.color, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp, bottomStart = 18.dp, bottomEnd = 18.dp))
-            .clickable { onClick() }
-            .testTag("shape_basket_${shape.name}"),
+            .border(
+                width = if (hasSelectedCard) 3.5.dp else 2.5.dp,
+                color = if (hasSelectedCard) VibrantAmber else shape.color,
+                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp, bottomStart = 18.dp, bottomEnd = 18.dp)
+            )
+            .testTag("shape_basket_${shape.name.lowercase()}"),
         contentAlignment = Alignment.Center
     ) {
         Column(
